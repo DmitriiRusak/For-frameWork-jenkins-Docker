@@ -1,27 +1,32 @@
 FROM bellsoft/liberica-openjdk-alpine:17
 RUN apk add curl jq
-WORKDIR /home/selenium-docker
+WORKDIR /home/docker-resources
 ADD /target/docker-resources ./
 ADD runner.sh runner.sh
 ENTRYPOINT sh runner.sh
-#ENTRYPOINT java -Dbrowser=${BROWSER} -Dselenium_grid_enabled=true -Dselenium.grid.hubHost=${HUB_HOST} -cp 'libs/*' org.testng.TestNG test_sutes/${TEST_SUITE}
+
+
+#dsds
+#FROM bellsoft/liberica-openjdk-alpine:17
+#RUN apk add curl jq
+#WORKDIR /home/selenium-docker
+#ADD /target/docker-resources ./
+#ADD runner.sh runner.sh
+#ENTRYPOINT sh runner.sh
+#ENTRYPOINT java -Dbrowser=${BROWSER} -Dselenium_grid_enabled=true -Dselenium_grid_hubHost=${HUB_HOST} -cp 'libs/*' org.testng.TestNG test_sutes/${TEST_SUITE}
 
 #FROM мы взяли alpine image с java 17
-#RUN apk add curl jq <- add utilities
+#RUN apk add curl jq <- add utilities А ДЛЯ ЧЯГО БЛЯТЬ ?
 # ************************************ COMANDS FOR DOCKER EXECUTION *******************************
 #--------------------scenario # 1 create dockerfile--------------------------------
-
-# FROM bellsoft/liberica-openjdk-alpine:17
-# WORKDIR /home/selenium-docker
-# ADD /target/docker-resources ./
-
 # explanation of dockerfile instructions:
 # ADD /target/docker-resources ./
 # ADD /target/docker-resources < -- то что хотим добавить
 # ./ < -- то куда хотим добавить в VM. В нашем случае у нас с помощью  WORKDIR /home/selenium-docker
-# уже указана директория поэтому символ './' указывает на текущую директорию т.е. home/selenium-docker
+# уже указана директория поэтому символ './' указывает на текущую директорию в V.M. т.е. home/selenium-docker
 
-# to build image: use build -t comand
+                         # to build image
+# docker build -t nazvanie_image .
 
 # To create volume mapping and run image:
 #docker run -it -v /C/for_experements/docker_experements/DockerFile/vins_guru_framwork/test_output:/home/selenium-docker/test-output delete_me_i_am_for_experement_only

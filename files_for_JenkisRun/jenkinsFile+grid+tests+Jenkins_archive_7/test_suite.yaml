@@ -1,0 +1,21 @@
+version: "3"
+services:
+    vendorPortal:
+        image: dimbas/frame_work
+        environment:
+        - BROWSER=firefox
+        - HUB_HOST=192.168.56.1
+        - TEST_SUITE=vendorPortal.xml
+        volumes:
+        - ./output/vendorPortal:/home/docker-resources/test-output
+        #- ./experement_test_data/mike.json:/home/selenium-docker/testData_inJSON/vendorPortal/mike.json
+    flight-reservation:
+        image: dimbas/frame_work
+        environment:
+        - BROWSER=chrome
+        - HUB_HOST=192.168.56.1
+        - TEST_SUITE=flight-reservation.xml
+        volumes:
+        - ./output/flight-reservation:/home/docker-resources/test-output
+    
+# ctrl + q = закоментировать выбранные строки .

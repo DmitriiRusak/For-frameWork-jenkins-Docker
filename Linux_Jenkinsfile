@@ -1,0 +1,40 @@
+pipeline{
+	agent any
+
+	stages{
+
+		stage('build jar'){
+			steps{
+                 echo "*******************************LINUX JENKINSFILE***************************************"
+				 sh "mvn clean package -DskipTests"
+			}
+		}
+
+		stage('build image'){
+			steps{
+				 sh "docker build -t=dimbas/frame_work:latest ."
+			}
+		}
+
+		stage('push image'){
+		    environment{
+		        CREDENTIALS = credentials('credentials_ID')
+		    }
+            steps{
+                 sh 'docker login -u ${CREDENTIALS_USR} -p ${CREDENTIALS_PSW}' //pay attention to single quote, and since we use object CREDENTIALS you need to use it.
+                 //sh "docker login -u dimbas -p IRONMAN11 docker.io"
+                 sh "docker push dimbas/frame_work:latest" //pushim image to dockerHub
+                 sh "docker tag dimbas/frame_work:latest dimbas/frame_work:${env.BUILD_NUMBER}"//We gives new tag to the image
+                 sh "docker push dimbas/frame_work:${env.BUILD_NUMBER}"
+            }
+        }
+
+	}
+
+	post {
+	    always {
+	        sh "docker logout"
+	    }
+	}
+
+}

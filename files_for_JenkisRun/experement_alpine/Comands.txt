@@ -1,0 +1,3 @@
+docker build -t=ex-nt_alpine_docker_java17_git . <-- создание image из Dockerfile-a
+
+docker run -it --name alpine-docker -v "/var/run/docker.sock:/var/run/docker.sock:rw" ex-nt_alpine_docker_java17_git

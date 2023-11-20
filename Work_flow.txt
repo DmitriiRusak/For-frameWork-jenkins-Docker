@@ -1,0 +1,1063 @@
+                                    СБОРКА ПРОЕКТА
+После того как все тесты написаны и все зависимости и плагины в РОМ указаны пришло время
+перенести нашу программу в Docker, но сначала надо создать jar files из нашего проекта (смотри РОМ)
+полученные файлы положить в (смотри ром) ${project.build.directory}/docker-resources
+Для этого прописываем :
+mvn clean package -DskipTests
+
+             ВОЗМОЖНОСТЬ ВОСПРОИЗВОДИТЬ СОБРАННУЮ ПРОГРАММУ С ПОМОЩЬЮ JAVA (без DOCKER-a)
+После этого у нас имеется возможность запустить созданный в jar-ках проект с помощью java:
+java -cp [where classes are presented] org.testng.TestNG [suite-file-path] <-- выполнит указанный testng_suit.xml file (то что указал в [suite-file-path])
+-cp <-- stands for class path
+[where classes are presented] <-- место где расположены скомпилированные .class файлы используемые программой (у нас они в libs)
+org.testng.TestNG <-- инструкция уведомляющая maven что хотим использовать suit testNg файлы
+[suite-file-path] <-- путь до suit testNg файла который хотим выполнить
+Например: (ПОМНИ ПРО ДИРЕКТОРИЮ ГДЕ РАСПОЛОЖЕНЫ НУЖНЫЕ ФАЙЛЫ, ИНАЧЕ НЕ СРАБОТАЕТ)
+java -cp .\libs\* org.testng.TestNG -parallel "none" test_sutes/flight-reservation.xml
+-parallel "none" <--можно устанавливать опции такие же как в test suit-ах
+На этом этапе можно переопределять переменные с помощью java -D команд в консоли
+We can override the system properties in .properties file by using -D[name_of_the_parameter=new_value_for_parameter]
+Например:
+java -Dselenium_grid_enabled=true -cp "./libs/*" org.testng.TestNG .\test_sutes\vendorPortal.xml
+-Dselenium_grid_enabled=true <-- переписывает значение параметра под названием: selenium_grid_enabled
+или можно
+-Dbrowser=firefox <-- переписывает значение параметра под названием: browser
+
+                       СОЗДАНИЕ первой DOCKER IMAGE из Dockerfile
+Пришло время создать Docker имедж. Но для чего? Мы создадим Docker image с java и закинем в эту
+имедж наш проект, и так как в контейнере уже будет джава мы сможем запускать контейнер и внутри его
+запускать на этой java наш проект,
+для этого в корне проекта надо создать Dockerfile, на этом этапе он будет выглядеть так:
+FROM bellsoft/liberica-openjdk-alpine:17
+WORKDIR /home/ocker-resources
+ADD /target/docker-resources ./
+здесь: берём за основу имедж где уже стоит java, в контейнере мы устанавливаем директорию с которой
+мы начнём работать (инструкция - WORKDIR), сюда же добовляем паку с проектом которую сгенерил maven.
+Теперь в терминале, в директории где лежит наш Dockerfile создаём имедж
+docker build -t=delete_me_i_am_experement_for_framework .
+Теперь можно запустить созданную имедж в итерактивном режиме и посмотреть что мы имеем там наши файлы.
+docker run -it delete_me_i_am_experement_for_framework
+и наш проект там будет, и java, но запустить мы ничего не сможем так как там нет браузеров!
+Мы можем установить на наш имедж ещо и браузеры, но это не рационально, требования по тестированию
+могут изменятся не только по типу браузера но и по версии. Можно воспользоватся selenium grid, добавит браузеров в него и
+зделать из него тоже имедж.
+
+                ЗАПУСК ДОКЕР ИМЕДЖ С SELENIUM GRID
+Создадим имедж с гридом + браузеры, запускаем его с помощью docker-compose up (если мы в его директории)
+version: "3"
+services:
+    hub:
+        image: selenium/hub:4.10.0
+        ports:
+        - 4444:4444
+    chrome:
+        image: selenium/node-chrome:4.10
+        shm_size: '2g'
+        depends_on:
+        - hub
+        deploy:
+         replicas: 1
+        environment:
+        - SE_EVENT_BUS_HOST=hub
+        - SE_EVENT_BUS_PUBLISH_PORT=4442
+        - SE_EVENT_BUS_SUBSCRIBE_PORT=4443
+        - SE_NODE_OVERRIDE_MAX_SESSIONS=true
+        - SE_NODE_MAX_SESSIONS=4
+        - SE_VNC_NO_PASSWORD=1
+    firefox:
+        image: selenium/node-firefox:4.10
+        depends_on:
+        - hub
+        deploy:
+         replicas: 1
+        environment:
+        - SE_EVENT_BUS_HOST=hub
+        - SE_EVENT_BUS_PUBLISH_PORT=4442
+        - SE_EVENT_BUS_SUBSCRIBE_PORT=4443
+        - SE_NODE_OVERRIDE_MAX_SESSIONS=true
+        - SE_NODE_MAX_SESSIONS=4
+        - SE_VNC_NO_PASSWORD=1
+Далее стартуем нашу имедж с проектом, делаем volume mapping чтобы видеть результаты выполнения
+у себя на локальной машине.
+docker run -it -v /C/for_experements/docker_experements/DockerFile/vins_guru_framwork/test_output:/home/docker-resources/test-output delete_me_i_am_experement_for_framework
+Теперь надо выполнить java команды и переопределить некоторые properties чтобы docker выполнял
+тесты на гриде а не искал браузеры у себя в имедже.
+java -Dbrowser=chrome -Dselenium_grid_enabled=true -Dselenium_grid_hubHost='172.23.96.1' -cp 'libs/*' org.testng.TestNG test_sutes/vendorPortal.xml
+Блять столько потратил время из-за этих ковычек, просто пизда. Этот код работает в интелледж терминале с директории
+где лежит построенный мавеном проект, но этот же код не работает в имедж, хотя в имедж всё тоже
+самое. Имедж не может достучатся до грида, она просто не видит грид. Всё, разобрался. Всё дело в ip адресе, когда выполняеш
+ipconfig в терминале то получаеш 3 этих адресов (отметил стрелками):
+ Connection-specific DNS Suffix  . :
+   Link-local IPv6 Address . . . . . : fe80::5fb2:2f75:3ec8:a16d%31
+   IPv4 Address. . . . . . . . . . . : 172.23.96.1         <--------------
+   Subnet Mask . . . . . . . . . . . : 255.255.240.0
+   Default Gateway . . . . . . . . . :
+
+Ethernet adapter Ethernet 2:
+
+   Connection-specific DNS Suffix  . :
+   IPv4 Address. . . . . . . . . . . : 192.168.56.1        <--------------
+   Subnet Mask . . . . . . . . . . . : 255.255.255.0
+   Default Gateway . . . . . . . . . :
+
+Ethernet adapter Ethernet:
+
+   Connection-specific DNS Suffix  . :
+   IPv4 Address. . . . . . . . . . . : 192.168.100.2        <--------------
+   Subnet Mask . . . . . . . . . . . : 255.255.255.0
+   Default Gateway . . . . . . . . . : 192.168.100.1
+Дак вот до грида можно достучатся используя IP адрес 172.23.96.1 или 192.168.100.2 . как и почему надо ещо учить/читать.
+
+                      ADDING ENTRYPOINT TO DOCKERFILE
+Чтобы не писать длинные команды с java в консоли контейнера (можно легко ошибится) можно зделать точку входа, когда
+создастся контейнер, docker сразу выполнит то, что указано в ENTRYPOINT.
+Dockerfile:
+FROM bellsoft/liberica-openjdk-alpine:17
+WORKDIR /home/docker-resources
+ADD /target/docker-resources ./
+ENTRYPOINT java -Dbrowser=${BROWSER} -Dselenium_grid_enabled=true -Dselenium.grid.hubHost=${HUB_HOST} -cp 'libs/*' org.testng.TestNG test_sutes/${TEST_SUITE}
+Удаляем нашу image и соберём новую с таким же именем, но с обновлённым Dockerfile-ом.
+Пересоберём проект:
+mvn clean package -DskipTests
+Построим имедж:
+docker build -t=delete_me_i_am_experement_for_framework .
+Так как в ENTRYPOINT есть параметры надо обязательно их указывать при запуске, указываем и запускаем. Не знаеш какие параметры
+указывать при старте? Смотри в Dockerfile в ENTRYPOINT. Делаем это c volume mapping и видим на сколько длинная команда получилась...
+# docker run -e BROWSER=chrome -e HUB_HOST=192.168.100.2 -e TEST_SUITE=vendorPortal.xml -v /C/for_experements/docker_experements/DockerFile/vins_guru_framwork/test_output:/home/docker-resources/test-output delete_me_i_am_experement_for_framework
+
+                                                 ОБЬЕДИНЯЕМ ГРИД + ИМЕДЖ В ОДИН .YAML FILE + runner (СМОТРИ: scenario #1)
+На этом этапе у нас есть грид(chrome+firefox) и Dockerfile(Entrypoint). Сначала запускаем грид, потом имедж (java+проект), при
+этом чтобы попасть в грид надо постоянно указывать порт грида при запуске имедж frameWork-a, так как по факту грид <--это одна
+имедж, а delete_me_i_am_experement_for_framework <--этодругая имедж, т.е. у нас 2 файла, что неудобно и хранить их и запускать.
+Надо обьединить всё в один файл.
+yaml.file:
+version: "3"
+services:
+    hub:
+        image: selenium/hub:4.10.0
+        ports:
+        - 4444:4444
+    chrome:
+        image: selenium/node-chrome:4.10
+        shm_size: '2g'
+        depends_on:
+        - hub
+        environment:
+        - SE_EVENT_BUS_HOST=hub # BY specifiing the ports the chrome container can talk to hub container
+        - SE_EVENT_BUS_PUBLISH_PORT=4442     #PORT
+        - SE_EVENT_BUS_SUBSCRIBE_PORT=4443
+        - SE_NODE_OVERRIDE_MAX_SESSIONS=true # podklychaem mnogopotochky
+        - SE_NODE_MAX_SESSIONS=4             # ykazivaem skolko thred-ov v 1 syshnasti
+        - SE_VNC_NO_PASSWORD=1               # in order to viw the work flow without password
+    firefox:
+        image: selenium/node-firefox:4.10
+        depends_on:
+        - hub
+        environment:
+        - SE_EVENT_BUS_HOST=hub
+        - SE_EVENT_BUS_PUBLISH_PORT=4442
+        - SE_EVENT_BUS_SUBSCRIBE_PORT=4443
+        - SE_NODE_OVERRIDE_MAX_SESSIONS=true
+        - SE_NODE_MAX_SESSIONS=4
+        - SE_VNC_NO_PASSWORD=1
+    vendorPortal:
+        image: delete_me_i_am_experement_for_framework
+        depends_on:
+        - firefox
+        environment:
+        - BROWSER=firefox
+        - HUB_HOST=hub
+        - TEST_SUITE=vendorPortal.xml
+        volumes:
+        - ./output/vendorPortal/:/home/docker-resources/test-output
+И здесь обнаружилась приинтереснейшая штука. Ну с грид-ом всё понятно там настройки прежние. А вот при настройке сервиса vendorPortal мы используем имедж
+которую мы построили из Dockerfile-a, затем инструкция depends_on по словам автора она якобы задаёт порядок включения сервисов но не выполняет их в заданном
+порядке, т.е. наш сервис в котором указано  depends_on: - firefox стартанёт после firefox но это (по словам автора) негарантирует что Docker когда стартанёт
+firefox, дождётся полного его (firefox-a) включения и готовности к работе, и только потом стартанёт наш сервис, нет (по словам автора) это горонтирует лишь
+то, что Docker сначала стартанёт firefox, а затем стартанёт наш контейнер и он не будет ждать полную загрузку firefox-a, он просто как бы расставляет
+приоритет только для старта сервисов, а кто там загрузится и когда он это типа не контролирует. Незнаю как там правильно но по факту тесты не выполняются
+первый раз, потом как бы выполняются хз. Покрутил по разному, бывает грид готов и тесты проходят, а бывает грид не готов и тесты не проходят,
+особенно когда 2 сьюта. Чтобы тесты выполнялись корректно надо убедится что грид готов к работе (готов выполнить тесты).
+curl - команда позволяет делать запросы на сервер/сайт и получать ответы, вот ссылка почитать: https://reqbin.com/req/c-kdnocjul/curl-commands.
+Запустим только грид без браузеров. Yaml file будет такой:
+version: "3"
+services:
+    hub:
+        image: selenium/hub:4.10.0
+        ports:
+        - 4444:4444
+С помощью curl will send request: curl http://192.168.56.1:4444/status
+and will get response in a JSON format:
+{
+  "value": {
+    "ready": false,
+    "message": "Selenium Grid not ready.",
+    "nodes": [
+    ]
+  }
+}
+Как видим хоть грид и работает но так как у него нет браузеров то message: "Selenium Grid not ready.".
+Добавим к гриду браузер, yaml file будет такой:
+version: "3"
+services:
+    hub:
+        image: selenium/hub:4.10.0
+        ports:
+        - 4444:4444
+    chrome:
+        image: selenium/node-chrome:4.10
+        shm_size: '2g'
+        depends_on:
+        - hub
+        environment:
+        - SE_EVENT_BUS_HOST=hub
+        - SE_EVENT_BUS_PUBLISH_PORT=4442
+        - SE_EVENT_BUS_SUBSCRIBE_PORT=4443
+        - SE_NODE_OVERRIDE_MAX_SESSIONS=true
+        - SE_NODE_MAX_SESSIONS=4
+        - SE_VNC_NO_PASSWORD=1
+Выполним команду curl http://192.168.56.1:4444/status
+Ответ:
+"value": {
+    "ready": true,
+    "message": "Selenium Grid ready.",
+    "nodes": [
+      {
+        "id": "7a3f4134-ced2-4740-9f73-1ee1f3cc54c5",
+        ... много ещё чего...
+    }
+}
+Весь ответ приводить не буду, но что нас интересеут дак это атрибут "message": "Selenium Grid ready." <-- т.е. атрибут имеет
+стринговое значение "Selenium Grid ready." Итак мы нашли способ как получить данную инф. теперь надо воспользоватся ещё одной
+утилитой JQ <-- this is tool for processing JSON inputs. Мы можем вызвать: curl http://192.168.56.1:4444/status и передать его
+результат на вход утилиты JQ например вот так: curl http://192.168.56.1:4444/status | jq
+Результатом будет: тот же респонс но разноцветный/крассивый, нас это не интересует, но jq can parse (анализировать) the JSON and we can extract the
+information what ever you like. Например
+curl http://192.168.56.1:4444/status | jq .value.ready <-- получим значение атрибута ready.
+Идея всего этого заключается - чтобы выполняя эту команду снова и снова,проверять, готов ли грид и если да то только тогда выполнить тесты.
+Но мы будем проверять атрибут message, следующей командой:
+curl http://192.168.56.1:4444/status | jq .value.message <-- и jq вернёт нам всё что есть в этом атрибуте "Selenium Grid ready." с кавычками,
+что нам в принципе не нужно, чтобы получит "чистое" значение используй флаг -r , что обозначает raw.
+curl http://192.168.56.1:4444/status | jq -r .value.message = Selenium Grid ready.
+Необходимо в проект добавить шел скрипт, смотри runner.sh. этот скрипт должен быть выполнен каждый раз когда запускается имедж, его назначение
+запускать проверку о готовности грида и когда грид готов выполнить инструкцию на java, эта инструкция то-же самое что раньше было ENTRYPOINT в Dockerfile-e.
+На этом этапе volume mapping-а нет в runner-e!
+Dockefile:
+FROM bellsoft/liberica-openjdk-alpine:17
+RUN apk add curl jq                          <--- добавили утилиты в контейнер (по умолчанию их там нет)
+WORKDIR /home/docker-resources               <--- директория с которой стартуем в контейнере
+ADD /target/docker-resources ./              <--- добовляем наш проект
+ADD runner.sh runner.sh                      <--- добавили runner в имедж
+ENTRYPOINT sh runner.sh                      <--- вызываем shell и выполняем runner
+После пересобираем проект в новую имедж.
+Yaml.file:
+version: "3"
+services:
+    hub:
+        image: selenium/hub:4.10.0
+        ports:
+        - 4444:4444
+    chrome:
+        image: selenium/node-chrome:4.10
+        shm_size: '2g'
+        depends_on:
+        - hub
+        environment:
+        - SE_EVENT_BUS_HOST=hub
+        - SE_EVENT_BUS_PUBLISH_PORT=4442
+        - SE_EVENT_BUS_SUBSCRIBE_PORT=4443
+        - SE_NODE_OVERRIDE_MAX_SESSIONS=true
+        - SE_NODE_MAX_SESSIONS=4
+        - SE_VNC_NO_PASSWORD=1
+    firefox:
+        image: selenium/node-firefox:4.10
+        depends_on:
+        - hub
+        environment:
+        - SE_EVENT_BUS_HOST=hub
+        - SE_EVENT_BUS_PUBLISH_PORT=4442
+        - SE_EVENT_BUS_SUBSCRIBE_PORT=4443
+        - SE_NODE_OVERRIDE_MAX_SESSIONS=true
+        - SE_NODE_MAX_SESSIONS=4
+        - SE_VNC_NO_PASSWORD=1
+    vendorPortal:
+        image: frame_work_image
+        depends_on:
+        - hub
+        environment:      # так как переменные по умолчанию обьявленны в runner-e то здесь можно ограничить или вообще удалить
+        - TEST_SUITE=vendorPortal.xml
+        volumes:
+        #- ./output/vendorPortal/:/home/docker-resources/test-output
+        - C:/for_experements/docker_experements/selenium_grid/for_framwork_(vinsGuruTest)_grid_and_tests-suties/scenario_1/output/vendorPortal/:/home/docker-resources/test-output
+    flight-reservation:
+        image: frame_work_image    # <--укажи действующую имедж!
+        depends_on:
+        - chrome
+        environment:
+        - BROWSER=chrome
+        - HUB_HOST=hub
+        - TEST_SUITE=flight-reservation.xml
+        volumes:
+         #- ./output/flight-reservation/:/home/docker-resources/test-output
+         - C:/for_experements/docker_experements/selenium_grid/for_framwork_(vinsGuruTest)_grid_and_tests-suties/scenario_1/output/flight-reservation/:/home/docker-resources/test-output
+
+Для старта: docker-compose up и всё.) Но получается что имедж будет хранится на DockerHube а вот yaml file нет!
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+                              PASSING NEW TEST DATA FOR TESTS USING VOLUME MAPPING
+
+When we build project with maven we hard coded the test-data for tests (json files)
+The program takes these files and use them as data for running tests, so it looks like we have to
+go to project and change these files or create new one in order to run the programm with new data.
+But we can change this files in a diferent way. We can do this by volume mapping,
+and give new modified file and programm will take it instead of the old one.
+As experement in vendorPortal application we will change mike.json file and will
+replace it with new fakeMike.json file. In that case we will be expecting test failure because
+the new fakeMike.json file will have mistake/wrong parameter. But the porpose is to demonstrate
+the ability to change data by volume mapping.
+The name of new file can difere from the file in VM
+for example:
+- ./experement_test_data/mike.json:/home/selenium-docker/testData_inJSON/vendorPortal/mike.json <-- the same name
+- ./experement_test_data/mike1234.json:/home/selenium-docker/testData_inJSON/vendorPortal/mike.json <-- new name
+
+And by using this approch we can create the whole diferent xml file for example and change the same file in VM and
+get new bihavior of our application
+See the yaml file:
+
+version: "3"
+services:
+    hub:
+        image: selenium/hub:4.10.0
+        ports:
+        - 4444:4444
+    chrome:
+        image: selenium/node-chrome:4.10
+        shm_size: '2g'
+        depends_on:
+        - hub
+        environment:
+        - SE_EVENT_BUS_HOST=hub # BY specifiing the ports the chrome container can talk to hub container
+        - SE_EVENT_BUS_PUBLISH_PORT=4442     #PORT
+        - SE_EVENT_BUS_SUBSCRIBE_PORT=4443
+        - SE_NODE_OVERRIDE_MAX_SESSIONS=true # podklychaem mnogopotochky
+        - SE_NODE_MAX_SESSIONS=4             # ykazivaem skolko thred-ov v 1 syshnasti
+        - SE_VNC_NO_PASSWORD=1               # in order to viw the work flow without password
+    firefox:
+        image: selenium/node-firefox:4.10
+        depends_on:
+        - hub
+        environment:
+        - SE_EVENT_BUS_HOST=hub
+        - SE_EVENT_BUS_PUBLISH_PORT=4442
+        - SE_EVENT_BUS_SUBSCRIBE_PORT=4443
+        - SE_NODE_OVERRIDE_MAX_SESSIONS=true
+        - SE_NODE_MAX_SESSIONS=4
+        - SE_VNC_NO_PASSWORD=1
+    vendorPortal:
+        image: frame_work_image
+        depends_on:
+        - hub
+        environment:
+        - TEST_SUITE=vendorPortal.xml
+        volumes:
+        - ./output/vendorPortal:/home/docker-resources/test-output
+        - ./experement_test_data/fakeMike.json:/home/docker-resources/testData_inJSON/vendorPortal/mike.json
+    flight-reservation:
+        image: frame_work_image
+        depends_on:
+        - hub
+        environment:
+        - TEST_SUITE=flight-reservation.xml
+        volumes:
+        - ./output/flight-reservation:/home/docker-resources/test-output
+
+Это даёт больше гибкости самому проекту, получается что можно изменить файлы проекта внеся новые(находящиеся в другой директории),
+при этом сам проект не поменяется.
+В этом сценарии меняется только yaml. file
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+                          МАШТАБИРУЕМ БРАЗЕРЫ В RUN TIM-Е (ДЕЛИМ YAML FILE НА ГРИД И ФРЭЙМВОРК ИМЕДЖ)
+Все файлы тут: C:\for_experements\docker_experements\selenium_grid\for_framwork_(vinsGuruTest)_grid_and_tests-suties\scenario_3
+We will try to scale(маштабировать) the browsers in a run time. The main idea is to create infrastructure (in this case it is browser
+nodes) whenever you need and scale it as much as you need, and after you finish discart it. До этого времени нам приходилось самим
+останавливать контейнеры используя Ctrl+c
+For that:
+1) create yaml file only with hub.
+We will keep the framwork image separatly from grid in order to control browser scalling in a run time. Because of that in every service/browser
+of the grid teg deploy: replica:0. Т.е. мы собираемся переписать значение этого атрибута когда будем запускать yaml.
+
+version: "3"
+services:
+    hub:
+        image: selenium/hub:4.10.0
+    chrome:
+        image: selenium/node-chrome:4.10
+        shm_size: '2g'
+        depends_on:
+        - hub
+        deploy:
+         replicas: 0
+        environment:
+        - SE_EVENT_BUS_HOST=hub # BY specifiing the ports the chrome container can talk to hub container
+        - SE_EVENT_BUS_PUBLISH_PORT=4442     #PORT
+        - SE_EVENT_BUS_SUBSCRIBE_PORT=4443
+        - SE_NODE_OVERRIDE_MAX_SESSIONS=true # podklychaem mnogopotochky
+        - SE_NODE_MAX_SESSIONS=4             # ykazivaem skolko thred-ov v 1 syshnasti
+        - SE_VNC_NO_PASSWORD=1               # in order to viw the work flow without password
+    firefox:
+        image: selenium/node-firefox:4.10
+        depends_on:
+        - hub
+        deploy:
+         replicas: 0
+        environment:
+        - SE_EVENT_BUS_HOST=hub
+        - SE_EVENT_BUS_PUBLISH_PORT=4442
+        - SE_EVENT_BUS_SUBSCRIBE_PORT=4443
+        - SE_NODE_OVERRIDE_MAX_SESSIONS=true
+        - SE_NODE_MAX_SESSIONS=4
+        - SE_VNC_NO_PASSWORD=1
+
+2).
+Our tests we will keep in separate file, and since we alredy have  grid  in a separate file, we dont need grid here.
+In order to be able to pass amaunt of browsers we keep it as environment variables
+
+version: "3"
+services:
+    vendorPortal:
+        image: frame_work_image
+        environment:
+        - BROWSER=${BROWSER}
+        - TEST_SUITE=vendorPortal.xml
+        volumes:
+        - ./output/vendorPortal:/home/docker-resources/test-output
+    flight-reservation:
+        image: frame_work_image
+        environment:
+        - BROWSER=${BROWSER}
+        - HUB_HOST=192.168.56.1
+        - TEST_SUITE=flight-reservation.xml
+        volumes:
+        - ./output/flight-reservation:/home/docker-resources/test-output
+
+So the first insructure:
+docker-compose -f grid.yaml up --scale chrome=2 -d
+Explanation:
+-f grid.yaml <-- since we have few dockerCompose files we tell the docker what specifik file should be сompleted.
+--scale chrome=2 <-- amaunt of nodes to be present (since we have 2 application we need 2 browsers).
+-d <--run it in background.(in order) (in a docker file that responsible for grid the ports are removed so we are not able to
+see the UI in a localhost. If you want to be able to see the UI of the grid use teg ports.)
+
+the second insructure:
+docker-compose up
+Explanation:
+Since the second .yaml file contains framwork (image with runner)when we run image runner see that the grid is
+running and execute the java comand wich is presented in it.
+You should be in the same directory where the desired dockerfile is presented, atherwise you need to provide name of
+the file with flag -f <name_of_the_file>
+
+If we enter the comand:
+docker-compose -f grid.yaml up --scale chrome=2 -d
+the docker created 2 nodes of chrome, but if we want to change it for example to firefox tipe:
+docker-compose -f grid.yaml up --scale firefox=2 -d
+and docker will automaticaly destroy the chrome nodes and instead of it will create firefox, we dont need to delete it manyaly.
+Pay attention if in .yaml file the browser set as chrome and you have fitrefox in grid running then you need to change the
+OS variable (set BROWSER = ...) and than call for docker-compose up
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+                                            Jenkins
+The problem with that aprouch is that the image we created is good and we can push it to dockerHub and use it, but what if I change
+the project code? Then this chenge will be only on a local machine, it will not be reflected in the image. Then I have to delete old image
+and build new one (or do new version). In the real life whenever we change the code we have to rebuild the image, and in a real life we
+work in ateam and if a few developers work on one project they are not gonna rebuild project, build tge image, push the image ..., instead
+once thei change the code thei will push it to gitHub repository the Jenkins came up, it will pull the repository to remote machine and
+creates the project jars (mvn clean package), it will build the docker image, run the tests, push the image to dockerHub. Its very useful
+all you need is just work on project and push it to repo. In this tutorial we will run Jenkins as a container of Docker! For this lets
+create directory: C:\for_experements\docker_experements\jenkins
+Jenkins use file directory to pack everything whatever it uses so it can be reused (its like a history). And since the jenkins is a container
+ we better use volume mapping to store it locally (for future), if this directory delete locally and try to rerun jenkins you will be doing all
+ the setup again (with username, password...).
+yaml of jenkins:
+version: "3"
+services:
+    jenkins:
+      image: jenkins/jenkins:lts
+      user: root # to instract the docker that we are gonna run the jenkins as a root with inafe privilage to do volume mapping
+      ports:
+      - 8080:8080
+      - 50000:50000
+      volumes:
+      - ./jenkins_files/master:/var/jenkins_home  # we store inf. that container use, for future use
+      environment:
+      - JAVA_OPTS="-Dhudson.model.DirectoryBrowserSupport.CSP="
+Будучи терминалам в директории где расположен jenkins yaml file выполним: docker-compose up.
+
+                                                             NODE CONFIGYRATION
+Node or slave it is the machine to wich jenkins master will deligate the work! The nodes can be multiple. You need to know the requriments
+for the node since its going to run our framwork image, its need to have: java, docker, gid, maven. In that tutorial we are gonna treat
+our machine as a node, since it has everithing we need. But if we would have one more computer we could connect it to the master and use it
+as a node.
+In order to create node we need to use jenkins UI, go to localhost:8000
+Dashbord->set up an agent->enter node name->in_a_remote_root_directory this is folder for node files need to indicate the directory where you
+want to keep the files related to the node work->launch_method choose "Launch agent by connecting it to the controller" it means that node will
+automatically connect to the controller->save
+At this point the configuration part for the node is ready. Master is now aware that it has a node.But its not connectec yet. To connect to
+the node click on it, choose appropriate way (mac, windows...). The principe is to download the jar (first line) for node and run it(multiple
+java comand). You have to be in a node directory (to keep things organised) in order to download the jar and then run it. So we need to keep
+2 terminals open, one for jenkins image (master), second for his node.
+
+                                                          JENKINS JOB
+Whatever the tast we want to do wia Jenkins it a Jenkins job. We might create n namber of job, If you know how to execute the comand via cmd,
+Jenkins can do it for you.
+To create job click + sign enter a neme, choose the tipe, lets use Freestyle project, click build steps, choose acording to OS, enter the ins-
+truction in the field->save. Go tp Dashbord, you should see the job presented, click on it, choose 'Build now'. After its done, click on the
+result and choose Console output in order to see the logs.
+
+                                                           PIPLENE
+It is the file in wich we write the comands, that jenkins will execute, one by one, it is written in a domain specific language. It dosnot have
+exstention, something similar to Dockerfile.
+Jenkinsfile_pipline - это как список команд которые должны быть выполнены jenkinsom, идея в том чтобы не прописывать
+каждую команду а зделать типа список, что за чем, также есть возможность указывать переменные.
+Всё наченается в главной секции называющейся piplene, например:
+pipline{
+	any agent   <-- любой node(slave) может выполнять следующие далее инструкции, это можно перенастроить на какойто отдельный. Каждый node имеет
+	конфигуацию, где можно установить/прописать лэйблы. В job-е в jenkins file we indicate not 'any agent', but:
+	    agent{
+	       label 'указываем лэйбл того нода который мы хотим чтобы выполнил этот файл'
+	    }
+	stages{     <-- блок где расположены stages
+		stage('stage_1'){
+			...здесь команды которые надо выполнить, для удобочитаемости их можно разбить по этим самым stage-ам
+		}
+		stage('stage_2'){
+			...
+		}
+	}
+	post {              <--optional block (что-то типа finally в java где закрываются ресурсы, такоеже назначение и здесь)
+		...что-то зделать в конце выполнения всей программы
+	}
+}
+So lets create jenkinsFile:
+pipeline{
+	agent any
+	stages{
+		stage('stage-1'){
+			steps{
+				echo "stage-1"
+				echo "doing mvn clean"
+				echo "doing mvn package"
+			}
+		}
+		stage('stage-2'){
+			steps{
+				echo "stage-2"
+				echo "building docker image"
+			}
+		}
+		stage('stage-3'){
+			steps{
+				echo "stage-3"
+				echo "pushing docker image"
+			}
+		}
+	}
+	post{
+		always{
+			echo "post section"
+		}
+	}
+}
+Then select new job,give the name, choose pipeline, scrol down and paste the code that we write in a jenkinsfile,save it, press 'build now'.
+
+                                     DIFERENCE IN SINTEX OF JENKINSFILE WRITING SINGLE QUOTE, DOUBLE QUOTE
+pipeline{
+	agent any
+	environment{
+		NUMBER = 3
+	}
+	stages{
+		stage('stage-1'){
+			steps{
+				echo "stage-1"
+				echo "doing mvn clean"
+				echo "doing mvn package"
+				echo 'my variable -> ${NUMBER}'                 < --I use single quote. Output - my variable -> ${NUMBER}
+			}
+		}
+		stage('stage-2'){
+		    environment {
+		        NUMBER = 100
+		    }
+			steps{
+				echo "stage-2"
+				echo "building docker image"
+				echo "my overrided variable -> ${NUMBER}"       <-- I use double quote. Output - my overrided variable -> 100
+			}
+		}
+	}
+When you use double quote the jenkins will extract the value that you indicated in a variable !
+When you use single quote the jenkins will use what you wrote as a it is.
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+                        Интеграция Jenkins в проект (создание Jenkinsfile в проекте)
+Создодим jenkinsfile в корневой директории, инструкции (stages) в нём такие же как когда мы использовали терминал и
+прописывали всё руками.
+pipeline{
+	agent any
+	stages{
+		stage('build jar'){
+			steps{
+				 bat "mvn clean package -DskipTests"
+			}
+		}
+		stage('build image'){
+			steps{
+				 bat "docker build -t=dimbas/name_for_my_framework_image:latest ."
+			}
+		}
+		stage('push image'){
+            steps{
+                 bat "docker push dimbas/name_for_my_framework_image:latest"
+            }
+        }
+	}
+}
+Теперь, так как Jnenkins работает с git-ом, надо запушить проект с jenkinsfile на gitHub.
+Скачаем HTTPS проекта из gitHuba.
+Создадим ещо одну jab: Give the name->choose pipeline->scroll down to the field where we use to insert the code->click
+Definition, choose Pipline script from SCM->choose 'git' in SCM section->insert copied url of the project in 'Repository
+url'->Aditional behavior choose "clean before check out"->indicate path to Jenjinsfile,since it in a root directory,just
+tipe Jenkinsfile.
+Выполняем job. Я тут зделаю небольшую вставку
++++++           +++++           +++++           +++++           +++++           +++++
+В Jenkins создал job в которм билдился проект, создавалась image и потом эта imaje пушилась на dockerHub.
+При этом я не предоставлял в job никаких credentials для входа в удалённый акаунт(это было сделано для обучения) и ожидал, что job зафэйлится на стадии push to repo, но он запушил успешно. Потом я вспомнил что сегодня с этой машины (но с другого терминала-что не важно) залогинился. Я набрал команду для логаута:
+docker logout ← выходит из учётной записи. После этого повторил свой job и он наконецто зафэйлился)))
++++++           +++++           +++++           +++++           +++++           +++++
+Идея в том что jenkinsFile не должен выполниться в последнем шаге когда пушим имедж на dockerHub, так как это требует
+userName и password, а это здесь не указано. We have to provide credentials
+
+-------------------------------------------------------------------------------------------------------------------
+                                ADD CREDENTIALS TO JENKINSFILE AND JENKINS
+В Jenkins UI select 'Manage jenkins'->Credentials->Global->click Kind, choose 'username with password'-> provide username
+and password(it should be valid to your dockerHub acaunt), provide ID (its going to be reference that will tell the
+Jenkins what to use when it see it in jenkinsfile)->Create.
+To use it in a jenkinsfile - the enironment block in a jenkinsfile has a special method credentials() which can be use
+to access credentials pre-difined in the Jenkins environment.
+For example:
+environment{
+    service_credentials = credentials('ID_that_you_provided_during_setUp_credentials')
+}
+It looks that we provided credentials to the variable that we have created, but how to get userName and password
+separatly? For thet Jenkins, behind the scene created 2 separate variables:
+$SERVICE_CREDS_USR <-- for unseName
+$SERVICE_CREDS_PSW <-- for password
+Изменил jenkinsFile добавив credentials:
+pipeline{
+	agent any
+	stages{
+		stage('build jar'){
+			steps{
+				 bat "mvn clean package -DskipTests"
+			}
+		}
+		stage('build image'){
+			steps{
+				 bat "docker build -t=dimbas/frame_work_image_jenkinsfile_credentials ."
+			}
+		}
+		stage('push image'){
+		    environment{
+		        CREDENTIALS = credentials('credentials_ID')
+		    }
+            steps{
+                 bat 'docker login -u %CREDENTIALS_USR% -p %CREDENTIALS_PSW%' //pay attention to single quote
+                 bat "docker push dimbas/frame_work_image_jenkinsfile_credentials"
+            }
+        }
+	}
+	post {
+	    always {
+	        bat "docker logout"
+	    }
+	}
+}
+Запушил изменения на гит, соответственно наша job теперь не зафэйлится, а создаст имедж и запушит в dockerHub.
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+На этом этапе подведём итоги:
+До jenkins-a  я смог построить проект в мавене, затем в проект добавил Dockerfile и построил свой имедж на основе
+скачаной имедж с Java 17. Но мне не удалось запустить этот контейнер так как в нём небыло браузеров. Вместо того чтоб
+устанавливать браузеры на свою имедж, я воспользовался гридом и создал ещё одну имедж - грид+браузеры. Теперь я мог
+сначала запустить грид с браузерами затем запустить свою имедж, всё работало. Дальше я решил обьединить обе имедж в
+одну. Несработало так-как сервисы в имедж приходят в состояние готовности поразному, docker не отслеживает выполнение
+сервисов по порядку(только запуск). Пришлось зделать runner который отслеживает готовность грида и только потом выпол-
+няет java команду ны выполнение, так было нормально. Но как бы не понятно что делать с yaml файлам он как ключь, и он
+не хранится вместе с имедж, скачав с dockerHub-a имедж её не запустить без yaml.fil-a, и ешё если захочеш что-то
+поменять в коде то придётся затем пушить изменения на гит, затем перестраивать имедж и пушить её на DockerHub и так
+каждый раз. Что даёт дженкинс? В дженкинс джоб можно создать пайплайн который будет скачивать действующий репозиторий
+создовать из него имедж, пушить имедж на DockerHub и возможно выполнять её в рамках этой же имедж, и теперь неважно
+сколько чел. работает и с какой переодичностью они изменяют код, с каждым комитом можно кому угодно проранить имедж
+имея дженкинс джоб.
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+                                    ADDING THE TAG TO THE IMAGE:
+Every time we run jenkins job, it downloaded repo, build the project,create image and push image to DockerHub, the prob-
+lem is that every time we push the image, our repo is always getting image with the same tag. So we dont have a history
+or versions.
+So the idea is to add tag to image, but how to do it in a pipline? Существует некий обьект(надо глубже разбирать jenkins)
+под названием env у которого есть поле BUILD_NUMBER, соответственно получить его можно по env.BUILD_NUMBER.
+Jenkinsfile:
+pipeline{
+	agent any
+	stages{
+		stage('build jar'){
+			steps{
+				 bat "mvn clean package -DskipTests"
+			}
+		}
+		stage('build image'){
+			steps{
+				 bat "docker build -t=dimbas/frame_work_image_jenkinsfile_credentials:latest ."
+			}
+		}
+		stage('push image'){
+		    environment{
+		        CREDENTIALS = credentials('DockerHubCredentials')
+		    }
+            steps{
+                 bat 'docker login -u %CREDENTIALS_USR% -p %CREDENTIALS_PSW%' //pay attention to single quote
+                 bat "docker push dimbas/frame_work_image_jenkinsfile_credentials:latest" //pushim image to dockerHub
+                 bat "docker tag dimbas/frame_work_image_jenkinsfile_credentials:latest dimbas/frame_work_image_jenkinsfile_credentials:${env.BUILD_NUMBER}"//We gives new tag to the image
+                 bat "docker push dimbas/frame_work_image_jenkinsfile_credentials:${env.BUILD_NUMBER}"
+            }
+        }
+	}
+	post {
+	    always {
+	        bat "docker logout"
+	    }
+	}
+}
+До конца не разобрался как это всё работает. мы создали и запушили имедж, потом мы этой же имедж присваиваем новый таг
+но берём его из какогото обьекта env, дженкинс в теме, потом эту-же имедж с новым тегом опять пушим и что? Docker типа
+понимает что это таже имедж и только меняет в ней тег. Проверил, всеравно как сохраняет обе имедж: latest и с номером,
+ну тот - env.BUILD_NUMBER
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+                                      EXEQUTE JENKINS JOB  PERIODICALY
+Можно настроить что гит сам будет говорить дженкинс когда получит новый комит чтобы дженкинс запускал процесс, но это
+походу не из бесплатной версии. Или дженкинс может постоянно проверять есть ли апдэйт в гите но это дорогая (с точки
+зрения памяти компа) операция. Или дженкинс может переодически выполнять job, неважно было обновления или нет, для
+этого. нажать configyre(той джоб которую хотим выполнять переодически)->in the section Build triggers choose build pere-
+odically and provide the script how it is sopose to be done (я не практиковал).
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+                                     ПЕРВЫЙ ЗАПУСК ЗАПУШИНОЙ ДЖЕНКИНСОМ ИМЕДЖ
+Так немного отмотал назад как это было до дженкинса: сначала строим проект, билдим имедж, пушим имедж, смотрим в
+директорию где лежит уамл (например: C:\for_experements\docker_experements\selenium_grid\for_framwork_(vinsGuruTest)_grid_and_tests-suties\scenario_3)
+сначала запускаем грид: docker-compose -f grid.yaml up --scale chrome=2 -d, затем тест-сьюты: docker-compose up.
+Так, едем дальше...
+Несмотря на то, что мы пользуемся дженкинс у нас всёравно по факту естьджоб которая пулит репо,билдит проджект,билдит
+имедж, пушит имедж, пока ничего не раним.
+Итак основной вопрос который остался это как и где хранить yaml file который заводит/ранит нашу имедж, да любой может
+скачать эту имедж но как её воспроизвести? Чел который ведёт этот туториал предлогает создать ещо один репозиторий на
+гитхабе где будем хранить наш так сказать runner.
+За основу возьмём yaml.file который использовали в scenario #1, финальную его версию где в одном файле:
+грид+браузеры+тест-сьюты а в проекте есть runner.
+# version: "3"
+services:
+    hub:
+        image: selenium/hub:4.10.0
+        ports:
+        - 4444:4444
+    chrome:
+        image: selenium/node-chrome:4.10
+        shm_size: '2g'
+        depends_on:
+        - hub
+        environment:
+        - SE_EVENT_BUS_HOST=hub
+        - SE_EVENT_BUS_PUBLISH_PORT=4442
+        - SE_EVENT_BUS_SUBSCRIBE_PORT=4443
+        - SE_NODE_OVERRIDE_MAX_SESSIONS=true
+        - SE_NODE_MAX_SESSIONS=4
+        - SE_VNC_NO_PASSWORD=1
+    firefox:
+        image: selenium/node-firefox:4.10
+        depends_on:
+        - hub
+        environment:
+        - SE_EVENT_BUS_HOST=hub
+        - SE_EVENT_BUS_PUBLISH_PORT=4442
+        - SE_EVENT_BUS_SUBSCRIBE_PORT=4443
+        - SE_NODE_OVERRIDE_MAX_SESSIONS=true
+        - SE_NODE_MAX_SESSIONS=4
+        - SE_VNC_NO_PASSWORD=1
+    vendorPortal:
+        image: frame_work_image
+        depends_on:
+        - hub
+        environment:      # так как переменные по умолчанию обьявленны в runner-e то здесь можно ограничить или вообще удалить
+        - TEST_SUITE=vendorPortal.xml
+        volumes:
+        #- ./output/vendorPortal/:/home/docker-resources/test-output
+        - C:/for_experements/docker_experements/selenium_grid/for_framwork_(vinsGuruTest)_grid_and_tests-suties/scenario_1/output/vendorPortal/:/home/docker-resources/test-output
+    flight-reservation:
+        image: frame_work_image    # <--укажи действующую имедж!
+        depends_on:
+        - chrome
+        environment:
+        - BROWSER=chrome
+        - HUB_HOST=hub
+        - TEST_SUITE=flight-reservation.xml
+        volumes:
+        #- ./output/flight-reservation/:/home/docker-resources/test-output
+        - C:/for_experements/docker_experements/selenium_grid/for_framwork_(vinsGuruTest)_grid_and_tests-suties/scenario_1/output/flight-reservation/:/home/docker-resources/test-output
+Директория где лежит этот пример: C:\for_experements\docker_experements\jenkins\jenkinsFile+grid+tests_in_one_yaml_file_6
+Итак есть yaml.file, добавим jenkinsfile:
+pipeline{
+	agent any
+	stages{
+		stage('docker-compose up'){
+			steps{
+				bat "docker-compose up"
+			}
+		}
+		stage('docker-compose down'){
+			steps{
+				bat "docker-compose down"
+			}
+		}
+	}
+}
+Требуется создать репо(так как будем использовать дженкинс), создать джоб который пулит репо, и ранит наш дженкинс файл.
+По итогу: тесты должны быть выполнены, но джоб на дженкинс не закончится, так как грид в серверном режиме. Закрыть в ручную
+So the question is how to stop the container after the tests are compited.
+--------------------------------------------------------------------------------------------------------------------------------
+
+                            ОСТАНАВЛИВАЮЩИЙСЯ JOB (РАЗДЕЛЬНЫЕ ФАЙЛЫ: ГРИД.YAML И FRAME_WORK_YAML)+ENV FILE + АРХИВ
+Надо отдельно создать грид с браузерами в одном yaml.fil-e
+Сoздать тест сьюты в отдельном yaml.file. Здесь можно убрать тег: depends on,так как теперь грид раздельно то
+смысла в этом тэге нет.
+Фишка в этом подходе - это сделанный отдельно .env file, чтобы применить переменные прописанные в нём в гриде используем:
+env_file: .env    <-- вроде бы можно давать имя этим файлам (если их несколько) а затем подставлять имена файлов которые
+требуются, да проверил так и есть.
+отдельно jenkinsfile
+
+Имея всё это раздельно, сначала потестим локально, запустим сначала грид: docker-compose -f grid.yaml up -d
+убедимся что грид работает и всё ок
+Запустим тесты: docker-compose -f test_suite.yaml up
+тесты выполнятся и завершатся. теперь можно всё закрыть
+docker-compose -f grid.yaml down
+docker-compose test_suite.yaml down
+
+Соответственно надо изменить jenkinsfile чтобы в нём был такой же порядок docker
+инструкций как описано чуть выше.
+Для того чтобы заархивировать результаты выполнения нашей framework используются последние
+2 строчки. (смотри файл ниже, секцию post).
+pipeline{
+	agent any
+	stages{
+		stage('Start grid'){
+			steps{
+				bat "docker-compose -f grid.yaml up -d"
+			}
+		}
+		stage('Run tests'){
+			steps{
+				bat "docker-compose -f test_suite.yaml up"
+			}
+		}
+	}
+	post {
+		always {
+			bat "docker-compose -f grid.yaml down"
+			bat "docker-compose -f test_suite.yaml down"
+			archiveArtifacts artifacts: 'output/flight-reservation/emailable-report.html', followSymlinks: false
+			archiveArtifacts artifacts: 'output/vendorPortal/emailable-report.html', followSymlinks: false
+		}
+
+	}
+}
+Если удалить директорию output на локальном компе из C:\for_experements\docker_experements\jenkins\jenkinsFile+grid+tests+Jenkins_archive_7
+, где распологается у нас локально этот пример, выполнить джоб, то папка волум маппинга (output)не создастся так как
+дженкинс всё запишет в директорию workspace того нода кто делал джоб. Ну да всё верно джоб же не делал наш локальный
+терминал/комп.
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+                                   PARAMETERIZE USING JENKINSFILE
+В yaml файле мы используем ТЭГ environment который даёт возможность запускать тест сьюты с теми переменными
+какие указаны, соответственно если хочеш поменять что-то то менять надо здесь в test_suite.yaml, затем комитить зделанные измененияна
+в гид и это как бы не удобно. Идея применения jenkins parameters в том чтобы указать эти изменения в jenkinsfile-e, что при выполне-
+нии функции "Build now" даёт возможность UI быстрой настройки указанных переменных. Ниже приведён пример как настроить данную
+функцию на примере переменной BROWSER.
+Yaml file:
+version: "3"
+services:
+    vendorPortal:
+        image: frame_work_image
+        environment:
+        - BROWSER=${BROWSER}  <--это переменная которая должна/может вводится при рантайме, например: docker-compose -f grid.yaml up --scale chrome=2 -d
+        - HUB_HOST=192.168.56.1
+        - TEST_SUITE=vendorPortal.xml
+        volumes:
+        - ./output/vendorPortal:/home/selenium-docker/test-output
+        #- ./experement_test_data/mike.json:/home/selenium-docker/testData_inJSON/vendorPortal/mike.json
+    flight-reservation:
+        image: frame_work_image
+        environment:
+        - BROWSER=${BROWSER}
+        - HUB_HOST=192.168.56.1
+        - TEST_SUITE=flight-reservation.xml
+        volumes:
+        - ./output/flight-reservation:/home/selenium-docker/test-output
+В формате Jenkins для того чтобы иметь возможность применять Scalling (маштабировать) необходимо настройка джоба.
+Для начала надо выбрать /создать job, дать имя, проскролить вниз до 'pipeline syntex'-> declarative generator->
+in a Sample Directive choose 'parameters: Parameters'-> click add, choose 'chose parameters'-> enter the name (какое имя у твоего параметра-например BROWSER)-> указать в choices
+какие параметры будут применены(например:chrome, firefox)->enter some discription (например-выберите браузер)-click on 'generate Declarative Directive' = дженкинс выдаёт код:
+parameters {
+  choice choices: ['firefox', 'chrome'], description: 'Choose the browser', name: 'BROWSER'
+}
+который нужно использовать в JENKINSFILE.
+теперь он выглядит так:
+
+pipeline{
+	agent any
+	parameters {
+		choice choices: ['chrome', 'firefox'], description: 'Select the browser', name: 'BROWSER'
+	}
+	stages{
+		stage('Start grid'){
+			steps{
+				bat "docker-compose -f grid.yaml up --scale ${params.BROWSER}=2 -d"   <-- создаём 2-а нода хрома(по одному на test suite)
+			}
+		}
+		stage('Run tests'){
+			steps{
+				bat "docker-compose -f test_suite.yaml up"
+			}
+		}
+	}
+	post {
+		always {
+			bat "docker-compose -f grid.yaml down"
+			bat "docker-compose -f test_suite.yaml down"
+			archiveArtifacts artifacts: 'output/flight-reservation/emailable-report.html', followSymlinks: false
+			archiveArtifacts artifacts: 'output/vendorPortal/emailable-report.html', followSymlinks: false
+		}
+	}
+}
+В этом jenkins_file-в stage ('Start grid') есть ${params.BROWSER}=2, на самом деле когда мы используем docker то достаточно указать ${BROWSER}=2 и docker
+понимает, какую переменную мы имеем ввиду. Но в Jenkinsfile есть спецефический синтекс и рекомендуется использовать обьект params у которого и есть типа эта
+переменная. Для того чтобы вспомнить что такое scale смотри scenario # 3.
+так как мы больше не наченаем выполнение с конкретного браузера то стоит убрать их в гриде, вернее установить replicas: 0
+в test.suit-e установить аргумент
+   - BROWSER=${BROWSER}
+или упростить -BROWSER <-- и всё !
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+                              Do we realy test the latest image of the project that we create?
+
+It seems that yes, but the small aspect is that we use node_1,
+our local machine creates image and run it, and evey time its create the latest version of the image it automatically pushes it to
+DockerHub, but mean time it saves it locally so when we give comand to run the image, Docker use the image that it has and didnot
+go for downloading the latest from DockerHub. And it might be kind of problem when we use diferent machine.So we need to be sure that
+we alwaus use the latest image. Так как имедж есть у нас на компе то Docker не будет загружать the latest из DockerHub-a. А что если
+на проекте работает несколько человек и кто-то обновил имедж, а как он это сделал? Запушил изменения в проект на гит, когда дженкинс
+будет ранить job по созданию проекта получится новая имедж, которой у нас локально нет на компе (я тут это перечитываю: это не совсем
+так, во первых на какой машине будет ранится? Если на той же которая вносила изменения в гит то последний имедж уже будет на ней так как
+мы билдили проект и когда будем выполнять ран то докер не пойдёт на докерХаб, если же мы билдили имедж на host машине, а раним на VM, то
+при прочих равных, так как у нас нет настроек пока, выполнится latest версия но эта latest та которая есть локально на выполняющей машине ).
+Предлогаю попробовать проверить это:
+1)Создам/запущу ubuntu, надо чтоб там была java+git+Docker+Jenkins+Maven.
+Прошло 2 дня! :(
+2)Клонирую себе репо.
+Итак по факту у меня есть: всё тоже самое что на контрольной машине. Я изменил дженкинсфайл, вернее я создал 2-а файла и вродебы они .txt
+LINUX-jenkinsfile и WINDOWS-jenkinsfile, соответственно для обоих машин, они отличаются синтаксисом, но не логикой. Также я скопировал
+уaml files для запуска jenkins и у меня на VM можно запустить дженкинс джоб по созданию имедж и её запушить.
+3)На VM Вносим изменения в проект(в VM делаю это без IDE так как её там нет, пользуюсь обычным текстовым редактором), пушу изменения на gitHub
+(тут нужен будет токен авторизации-смотри в "изучение гит" его надо ввести толи вместо пассворда толи после пасворда), на этой же VM запускаю
+джоб который пулит репо, билдит джарки, билдит имедж, пушит имедж на dockerHub.
+4)Выполню на контрольной машине (host machine) Jenkins job которая пулит имедж с докеХаба и ранит её.
+И вот тут мы и имемм факт того, что на хост машине Docker не спулил имедж, а выполнил уже имеющуюся у него latest версию, потому что в джоб
+не было соответствующей инструкции
+Зделаю небольшую вставку из директории с примером № 9:
+	Во первых можно настроить несколько параметров в jenkins job. Как?
+Делаеш всё что описано в примере №8, точно также указываеш что project parameterized <-- отметить галочкой, заполнить поля, но
+после того как заполнил певый параметр не выходиш а нажимаеш "add" и заполняеш ещё одно такое же поле.
+Для того чтобы добавить скрипт в jenkinsfile просто зделай инструкцию 2 раза как описано в 8 примере и jenkinsfile
+должен выглядеть вот так:
+pipeline{
+	agent any
+	parameters {
+		choice choices: ['chrome', 'firefox'], description: 'Select the browser', name: 'BROWSER'
+	    	choice choices: ['192.168.56.1', '192.168.100.3', '172.23.96.1'], description: 'Select the gri port', name: 'HUB_HOST'  <-- здееесь и расположен 2 параметр!
+
+	}
+	stages{
+		stage('Start grid'){
+			steps{
+				bat "docker-compose -f grid.yaml up --scale ${params.BROWSER}=2 -d"
+			}
+		}
+		stage('Run tests'){
+			steps{
+				bat "docker-compose -f test_suite.yaml up"
+			}
+		}
+	}
+	post {
+		always {
+			bat "docker-compose -f grid.yaml down"
+			bat "docker-compose -f test_suite.yaml down"
+			archiveArtifacts artifacts: 'output/flight-reservation/emailable-report.html', followSymlinks: false
+			archiveArtifacts artifacts: 'output/vendorPortal/emailable-report.html', followSymlinks: false
+		}
+	}
+}
+
+Во вторых чтобы докер всегда использовал latest version of the image we need to add "--pull=alwaus" instruction to docker-compose up
+see the jenkinsfile:
+pipeline{
+	agent any
+	parameters {
+		choice choices: ['chrome', 'firefox'], description: 'Select the browser', name: 'BROWSER'
+	        choice choices: ['192.168.56.1', '192.168.100.3', '172.23.96.1'], description: 'Select the gri port', name: 'HUB_HOST'
+	}
+	stages{
+		stage('Start grid'){
+			steps{
+				bat "docker-compose -f grid.yaml up --scale ${params.BROWSER}=2 -d"
+			}
+		}
+		stage('Run tests'){
+			steps{
+				bat "docker-compose -f test_suite.yaml up --pull=always"  <-----------------------------------------------всегда спуливает latest virsion of the image
+			}
+		}
+	}
+	post {
+		always {
+			bat "docker-compose -f grid.yaml down"
+			bat "docker-compose -f test_suite.yaml down"
+			archiveArtifacts artifacts: 'output/flight-reservation/emailable-report.html', followSymlinks: false
+			archiveArtifacts artifacts: 'output/vendorPortal/emailable-report.html', followSymlinks: false
+		}
+	}
+}
+-------------------------------------------------------------------------------------------------------------------------------------------
+                                 Docker на Docker. А так можно ?
+Так с Дженкинсом я немного разобрался, хотя хотелось бы пройти курс только по этому тнструменту. Теперь решил попробовать запустить
+свои тесты со своей же машины но с помощью Docker воспользоватся имедж с Alpine поставить туда джава, редактор, docker, git и
+сэмитировать работу на другой машине, что из этого получилось смотри в experement_alpine в Docker experements, и положу
+на всякий ещё и сюда в files for jenkinsRun
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

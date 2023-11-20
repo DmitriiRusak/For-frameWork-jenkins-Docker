@@ -1,0 +1,11 @@
+{
+  "userFirstName": "Docker",
+  "userLastaname": "Cucumber",
+  "email": "Email",
+  "password": "password",
+  "street": "Zelenaia",
+  "city": "Mosty",
+  "zip": "53431",
+  "nomberOfPassenjers": "1",
+  "price": "$584 USD"
+}

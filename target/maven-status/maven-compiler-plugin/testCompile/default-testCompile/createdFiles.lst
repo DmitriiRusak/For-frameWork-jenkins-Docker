@@ -1,0 +1,11 @@
+driverManager\DriverManagerTest.class
+utils\Constants.class
+utils\ConfigurationProperties.class
+tests\FlightReservationTest.class
+utils\ResourceLoader.class
+utils\JsonUtil.class
+pojo_modells\VendorPortalPojo.class
+pojo_modells\VendorReservationPojo.class
+tests\VendorPortalTest.class
+utils\FotTrainingPorposeOnly.class
+listener\TestListener.class

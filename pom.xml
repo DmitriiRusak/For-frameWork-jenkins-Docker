@@ -82,7 +82,7 @@
                     <systemPropertyVariables>
                         <browser>chrome</browser>
                         <!--<selenium.grid.enabled>true</selenium.grid.enabled>-->
-                        <selenium_grid_enabled>true</selenium_grid_enabled>
+                        <selenium_grid_enabled>false</selenium_grid_enabled>
                     </systemPropertyVariables>
 
                     <suiteXmlFiles>

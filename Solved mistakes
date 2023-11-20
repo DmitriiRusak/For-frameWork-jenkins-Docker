@@ -1,0 +1,54 @@
+***************** ANABLE TO PASS SYSTEM PARAMETERS USING OPTION -D **********************************
+I can not pass the parameters, somehaw java thinks that I am trying to give the location of main class.
+The error:
+Error: Could not find or load main class Dselenium_grid_enabled=true
+Caused by: java.lang.ClassNotFoundException: Dselenium_grid_enabled=true
+
+I deleted docker-resources directory (for that I have to close IDEA and delete the folder in a project location)
+than make shure in pom.xml selenium_grid_enabled=false and in .properties file it should be false as well.
+Then need to rebuild all the project again using : 'mvn clean package -DskipTests'
+now both commands work well:
+1) java -cp "./libs/*" org.testng.TestNG .\test_sutes\vendorPortal.xml
+2) java -Dselenium_grid_enabled=true -cp "./libs/*" org.testng.TestNG .\test_sutes\vendorPortal.xml
+
+I think the conflikt might be because in .properties file the value for selenium_grid_enabled=false and in POM.xml the value was true,
+then I packaged the project and after that seems that I worked with that specific version that I build, and somehow that version did not
+allow to use -D option .
+
+P.S. ОГЛЯДЫВАЯСЬ Я ПОНИМАЮ ЧТО ОШИБКА СКОРЕЕ ВСЕГО БЫЛА ПОТОМУ ЧТО Я ПЫТАЛСЯ ЗАПУСТИТЬ ПРОГРАММУ НА ВЫПОЛНЕНИЕ НЕ ИЗ
+ПРАВИЛЬНОЙ ДИРЕКТОРИИ. ОЧЕНЬ ВАЖНО ЧТОБЫ ТЕКУЩАЯ ДИРЕКТОРИЯ БЫЛА ДИРЕКТОРИЕЙ ГДЕ ЛЕЖАТ ИСПОЛЬЗУЕМЫЕ ДИРЕКТОРИИ, В ДАННОМ
+СЛУЧАЕ ЭТО НЕ PS C:\Users\user\IdeaProjects\DockerVinothTestingApp>, ПРАВИЛЬНАЯ ДИРЕКТОРИЯ
+PS C:\Users\user\IdeaProjects\DockerVinothTestingApp\target\docker-resources> ИМЕННО ЗДЕСЬ РАСПОЛОЖЕНА ПАПКА libs, test_sutes...
+ТО ЧТО НАМ И НАДО ДЛЯ ЗАПУСКА
+
+-----------------------------------------------------------------------------------------------------------------------------------------
+                                     НЕ СОЗДАЮТСЯ ФАЙЛЫ ИЗ VOLUME MAPPING-A
+Volume mapping связывает 2 директории и изменения в любой из них видимы в другой.
+запись с моего файла:
+volumes:
+- ./output:/home/selenium-docker/test-output
+Результат: в папке output я не нахожу нужных мне файлов, а всё потому что я неправильно указал место расположение нужных мне
+файлов в контейнере, как результат на моей машине директория output создаётся пустой. Правильный вариант:
+- ./output/:/home/docker-resources/test-output
+Т.е. я пытался получить файлы из директории где этих папок не. Посмотрел в Dockerfile куда я добовлял свой проект и там соответственно
+их нашол.
+--------------------------------------------------------------------------------------------------------------------------------------
+                                                LogOut из удалённого dockerHub
+В Jenkins создал job в которм билдился проект, создавалась image и потом эта imaje пушилась на dockerHub.
+При этом я не предоставлял в job никаких credentials для входа в удалённый акаунт(это было сделано для обучения) и ожидал, что job зафэйлится
+на стадии push to repo, но он запушил успешно. Потом я вспомнил что сегодня с этой машины (но с другого терминала-что не важно) залогинился.
+Я набрал команду для логаута:
+docker logout ← выходит из учётной записи. После этого повторил свой job и он наконецто зафэйлился)))
+---------------------------------------------------------------------------------------------------------------------------------------
+                                               Во время выполнения job нелогинился в DockerHub
+Джоб-пулила репо, билдил проект, билдил имедж, и должен был запушить её на DockerHub. Но возникла ошибка:
+Error saving credentials: error storing credentials - err: exit status 1, out: `Post "http://ipc/registry/credstore-updated": context deadline exceeded (Client.Timeout exceeded while awaiting headers)`
+Незнаю с чем это связано но я обновил docker desctop + добавил немого кеша на дженкинс + удалил историю билдов у этой job.
+------------------------------------------------------------------------------------------------------------------------------------------
+                                            Conflikt Jenkinsfiles in jenkins
+Я решил сохранить jenkins файлы все которые я использовал в обучении в проект и для этого создал отдельную директорию.
+Когда всё запушил на гитХаб то jenkins выдал пря 100/500 ошибок. Всё дело в том,что каждый jenkinsfile он воспринимал
+как файл для выполнения, я пытался указать что то типа DockerVinothTestingApp/Jenkinsfile в конфигурации job (путь
+до файла который я хочу выполнить) но это не помогло. Выходом стало переделать jenkinsfile-ы под txt формат и переименовать
+заодно, всё заработало.
+

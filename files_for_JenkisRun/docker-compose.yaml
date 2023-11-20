@@ -1,0 +1,13 @@
+version: "3"
+services:
+    jenkins:
+      image: jenkins/jenkins:lts
+      shm_size: '2g'
+      user: root # to instract the docker that we are gonna run the jenkins as a root with inafe privilage to do volume mapping
+      ports: 
+      - 8080:8080
+      - 50000:50000
+      volumes:
+      - ./jenkins_files/master:/var/jenkins_home  # we store inf. that container use, for future use
+      environment:
+      - JAVA_OPTS="-Dhudson.model.DirectoryBrowserSupport.CSP="
