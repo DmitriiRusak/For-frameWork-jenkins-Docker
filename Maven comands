@@ -1,0 +1,26 @@
+mvn clean test <-виполняет прогонку всех инструкций (testNG xml) файлов, всё что указано в ром, при этом сколько suitov укажеш
+
+mvn clean package -DskipTests<-- package the application (creates jars, wars and other files)in a specified file here it is -> docker-resources
+-DskipTests <-- позволяет построить application без выполнения тестов. (по умолчанию тесты выполняются)
+
+docker build -t=frame_work_image .
+
+
+                            следущие команды воспроизводятся языком java а не maven-ам
+java -cp [where classes are presented] org.testng.TestNG [suite-file-path] <-- выполнит указанный testng_suit.xml file (то что указал в [suite-file-path])
+-cp <-- stands for class path
+[where classes are presented] <-- место где расположены скомпилированные .class файлы используемые программой
+org.testng.TestNG <-- инструкция уведомляющая maven что хотим использовать suit testNg файлы
+[suite-file-path] <-- путь до suit testNg файла который хотим выполнить
+Например: (ПОМНИ ПРО ДИРЕКТОРИЮ ГДЕ РАСПОЛОЖЕНЫ НУЖНЫЕ ФАЙЛЫ, ИНАЧЕ НЕ СРАБОТАЕТ)
+java -cp .\libs\* org.testng.TestNG -parallel "none" test_sutes/flight-reservation.xml
+-parallel "none" <--можно устанавливать опции такие же как в test suit-ах
+
+We can override the system properties in .properties file by using -D[name_of_the_parameter=new_value_for_parameter]
+Например:
+java -Dselenium_grid_enabled=true -cp "./libs/*" org.testng.TestNG .\test_sutes\vendorPortal.xml
+-Dselenium_grid_enabled=true <-- переписывает значение параметра под названием: selenium_grid_enabled
+или можно
+-Dbrowser=firefox <-- переписывает значение параметра под названием: browser
+
+

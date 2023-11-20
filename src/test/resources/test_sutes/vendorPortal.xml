@@ -1,0 +1,23 @@
+<!DOCTYPE suite SYSTEM "https://testng.org/testng-1.0.dtd" >
+<suite name="VendorPortal suit" parallel="tests">
+    <test name="user_john">                        <!--this is one work flow-->
+        <parameter name="PathToDataInJson" value="testData_inJSON/vendorPortal/john.json" />
+        <classes>
+            <class name="tests.VendorPortalTest"></class>
+        </classes>
+    </test>
+
+    <test name="user_mike">                        <!--this is one work flow-->
+        <parameter name="PathToDataInJson" value="testData_inJSON/vendorPortal/mike.json" />
+        <classes>
+            <class name="tests.VendorPortalTest"></class>
+        </classes>
+    </test>
+
+    <test name="user_sam">                        <!--this is one work flow-->
+        <parameter name="PathToDataInJson" value="testData_inJSON/vendorPortal/sam.json" />
+        <classes>
+            <class name="tests.VendorPortalTest"></class>
+        </classes>
+    </test>
+</suite>
